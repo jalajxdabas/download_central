@@ -1,3 +1,5 @@
+// THIS IS DIRECTLY FECHING THE DATA FROM THE GCS
+
 // import { useEffect, useState } from 'react';
 // import axios from 'axios';
 // const handleDownload = (filename) => {
@@ -90,7 +92,6 @@
 import { useEffect, useState } from 'react';
 import axiosInstance from '../api/axios'; 
 
-
 const handleDownload = (id) => {
   const downloadUrl = `http://localhost:3000/api/files/download/${id}`;
   window.location.href = downloadUrl;
@@ -99,67 +100,93 @@ const handleDownload = (id) => {
 export default function MetadataTable() {
   const [metadataList, setMetadataList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false); // new state for sync
+
+  const fetchFileMetadata = async () => {
+    try {
+      setLoading(true);
+      const response = await axiosInstance.get('/files');
+      const data = response.data.files || [];
+      setMetadataList(data);
+    } catch (err) {
+      console.error('Error fetching file list:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchFileMetadata = async () => {
-      try {
-        // Fetch metadata directly from PostgreSQL
-        const response = await axiosInstance.get('/files');
-        const data = response.data.files || [];
-        setMetadataList(data);
-
-      } catch (err) {
-        console.error('Error fetching file list:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchFileMetadata();
   }, []);
 
-  if (loading) {
-    return <p className="text-center text-slate-500 mt-10">Loading metadata...</p>;
-  }
+  // 🔄 Handle Sync Button Click
+  const handleSync = async () => {
+    try {
+      setSyncing(true);
+      await axiosInstance.post('/files/sync');
+      await fetchFileMetadata(); // refresh list
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   return (
-    <div className="overflow-x-auto rounded-lg shadow-md bg-white">
-      <table className="min-w-full table-auto text-sm">
-        <thead className="bg-violet-200 text-slate-800 uppercase tracking-wide">
-          <tr>
-            <th className="px-6 py-4 text-left">File Name</th>
-            <th className="px-6 py-4 text-left">Size (bytes)</th>
-            <th className="px-6 py-4 text-left">Type</th>
-            <th className="px-6 py-4 text-left">Created At</th>
-            <th className="px-6 py-4 text-left">Last Updated</th>
-            <th className="px-6 py-4 text-left">Storage Class</th>
-            <th className="px-6 py-4 text-center">Action</th>
-          </tr>
-        </thead>
-        <tbody className="text-slate-700 divide-y divide-slate-200">
-          {metadataList.map((meta, index) => {
-            const nameOnly = meta.name?.split('.')[0] || 'Unnamed';
-            return (
-              <tr key={index} className="hover:bg-slate-50">
-                <td className="px-6 py-4 font-medium">{nameOnly}</td>
-                <td className="px-6 py-4">{meta.size}</td>
-                <td className="px-6 py-4">{meta.content_type}</td>
-                <td className="px-6 py-4">{new Date(meta.time_created).toLocaleString()}</td>
-                <td className="px-6 py-4">{new Date(meta.updated).toLocaleString()}</td>
-                <td className="px-6 py-4">{meta.storage_class}</td>
-                <td className="px-6 py-4 text-center">
-                  <button
-                    onClick={() => handleDownload(meta.id)}
-                    className="bg-gradient-to-r from-violet-500 to-purple-500 text-white px-3 py-1.5 rounded-full font-medium transition shadow-sm hover:opacity-90"
-                  >
-                    Download
-                  </button>
-                </td>
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-semibold text-slate-800">Cloud File Metadata</h2>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {syncing ? 'Syncing...' : 'Sync Now'}
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="text-center text-slate-500 mt-10">Loading metadata...</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg shadow-md bg-white">
+          <table className="min-w-full table-auto text-sm">
+            <thead className="bg-violet-200 text-slate-800 uppercase tracking-wide">
+              <tr>
+                <th className="px-6 py-4 text-left">File Name</th>
+                <th className="px-6 py-4 text-left">Size (bytes)</th>
+                <th className="px-6 py-4 text-left">Type</th>
+                <th className="px-6 py-4 text-left">Created At</th>
+                <th className="px-6 py-4 text-left">Last Updated</th>
+                <th className="px-6 py-4 text-left">Storage Class</th>
+                <th className="px-6 py-4 text-center">Action</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody className="text-slate-700 divide-y divide-slate-200">
+              {metadataList.map((meta, index) => {
+                const nameOnly = meta.name?.split('.')[0] || 'Unnamed';
+                return (
+                  <tr key={index} className="hover:bg-slate-50">
+                    <td className="px-6 py-4 font-medium">{nameOnly}</td>
+                    <td className="px-6 py-4">{meta.size}</td>
+                    <td className="px-6 py-4">{meta.content_type}</td>
+                    <td className="px-6 py-4">{new Date(meta.time_created).toLocaleString()}</td>
+                    <td className="px-6 py-4">{new Date(meta.updated).toLocaleString()}</td>
+                    <td className="px-6 py-4">{meta.storage_class}</td>
+                    <td className="px-6 py-4 text-center">
+                      <button
+                        onClick={() => handleDownload(meta.id)}
+                        className="bg-gradient-to-r from-violet-500 to-purple-500 text-white px-3 py-1.5 rounded-full font-medium transition shadow-sm hover:opacity-90"
+                      >
+                        Download
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
